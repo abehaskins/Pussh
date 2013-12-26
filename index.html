@@ -1,0 +1,202 @@
+<!doctype html>
+<html class="no-js" lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Pussh</title>
+        <link rel="stylesheet" href="css/app.css" />
+        <script src="bower_components/modernizr/modernizr.js"></script>
+        <script type='text/javascript' src='https://cdn.firebase.com/v0/firebase.js'></script>
+        <script type='text/javascript' src='https://cdn.firebase.com/v0/firebase-simple-login.js'></script>
+        <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.2.6/angular.min.js"></script>
+        <script src="https://cdn.firebase.com/libs/angularfire/0.5.0/angularfire.min.js"></script>
+        <script src="/js/moment.js"></script>
+        <script>
+            var app = angular.module( 'Pussh', ["firebase"] ).run(function () {})
+            .constant("FB", "https://bucket.firebaseio.com");
+            
+            app.controller( 'Main', function($rootScope, $scope, $http, $firebase, $firebaseAuth, FB) {
+                var ref = new Firebase(FB);
+                $scope.auth = $firebaseAuth(ref);
+                $scope.item = {type: "activity"}
+                
+                $rootScope.$on("$firebaseAuth:login", function(e, user) {
+                    var path;
+                    
+                    (new Firebase([FB, $scope.auth.user.uid, 'name'].join('/'))).set(user.displayName);
+                    
+                    path = [FB, $scope.auth.user.uid].join('/');
+                    $scope.me = $firebase(new Firebase(path));
+                    
+                    path = [FB, $scope.auth.user.uid, "activity"].join('/');
+                    $scope.activities = $firebase(new Firebase(path));
+                    
+                    path = [FB, $scope.auth.user.uid, "reward"].join('/');
+                    $scope.rewards = $firebase(new Firebase(path));
+                    
+                    path = [FB, $scope.auth.user.uid, "history"].join('/');
+                    $scope.history = $firebase(new Firebase(path));
+                    
+                    path = [FB].join('/');
+                    $scope.users = $firebase(new Firebase(path));
+                });
+                
+                $scope.act = function (activity) {
+                    $scope.me.points = $scope.me.points? parseInt($scope.me.points, 10)+parseInt(activity.price, 10):parseInt(activity.price, 10);
+                    $scope.me.$save();
+                    
+                    $scope.history.$add({
+                        title: activity.title,
+                        change: "+" + activity.price,
+                        date: moment(new Date()).format("MMM Do YY")
+                    });
+                    alert("Performed " + activity.title);
+                };
+                
+                $scope.get = function (reward) {
+                    if (parseInt(reward.price, 10) <= parseInt($scope.me.points, 10)) {
+                        $scope.me.points = parseInt($scope.me.points, 10)-parseInt(reward.price, 10);
+                        $scope.me.$save();
+                        
+                        $scope.history.$add({
+                            title: reward.title,
+                            change: "+" + reward.price,
+                            date: moment(new Date()).format("MMM Do YY")
+                        });
+                        alert("Redeemed points for " + reward.title);
+                    }else{
+                        alert("You don't have enough points for that :(");   
+                    }
+                };
+                
+                $scope.$watch('users', function () {
+                    $scope.leaders = [];
+                    angular.forEach(angular.fromJson(angular.toJson($scope.users)), function (user, key) {
+                        $scope.leaders.push({
+                            name: user.name,
+                            points: parseInt(user.points, 10)
+                        });
+                    });
+                }, true);
+                
+                $scope.newItem = function () {
+                    (new Firebase([FB, $scope.auth.user.uid, $scope.item.type].join('/'))).push(
+                        $scope.item, function () {
+                            $scope.item = {type: "activity"};
+                            alert("New thingy added!");
+                        }
+                    );
+                };
+                
+                $scope.hello = "True"
+            });
+        </script>
+    </head>
+    <body ng-app="Pussh" ng-controller="Main">
+        <div class="row">
+            <div class="large-10 columns"><h2>Welcome to Pussh</h2></div>
+            <div class="large-2 columns"><a ng-hide="auth.user" ng-click="auth.$login('twitter')" class="small button expand">Login</a></div>
+            <div class="large-2 columns"><a ng-show="auth.user" ng-click="auth.$logout()" class="small button expand">Logout</a></div>
+        </div>
+        
+        <div class="row" ng-show="auth.user">
+            <div class="large-12 columns">
+                <div class="panel callout"><h6>You have {{me.points || 0}} points!</h6></div>
+            </div>
+        </div>
+        
+        <div class="row" ng-show="!auth.user">
+            <div class="large-12 columns">
+                <div class="panel">
+                    <h3>Track it, buy it, smack it!</h3>
+                    <p>Log in to get started :D</p>
+                </div>
+            </div>
+        </div>
+        
+        <div ng-show="auth.user">
+            <div class="row">
+                <div class="large-6 columns">
+                    <h3>Activities</h3>
+                    <div class="panel">
+                        <div class="button small expand" ng-repeat="activity in activities" ng-click="act(activity)">
+                            <div class="large-6 columns">{{activity.title}}</div>
+                            <div class="large-6 columns">+{{activity.price}}</div>
+                        </div>
+                        <div ng-if="!activities">No activities :(</div>
+                    </div>
+                    
+                </div>  
+                <div class="large-6 columns">
+                    <h3>History</h3>
+                    <div class="panel">
+                        <div class="row" ng-repeat="record in history">
+                            <h6 class="small-4 columns">{{record.date}}</h6>
+                            <h6 class="small-6 columns">{{record.title}}</h6>
+                            <h6 class="small-2 columns">{{record.change}}</h6>
+                        </div>
+                        <div ng-if="!history">No history :(</div>
+                    </div>
+                    
+                </div>   
+            </div>
+            
+            <div class="row">
+                <div class="large-6 columns">
+                    <h3>Rewards</h3>
+                    <div class="panel">
+                        <div class="button small alert expand" ng-repeat="reward in rewards" ng-click="get(reward)">
+                            <div class="large-6 columns">{{reward.title}}</div>
+                            <div class="large-6 columns">-{{reward.price}}</div>
+                        </div>
+                        <div ng-if="!rewards">No rewards :(</div>
+                    </div>
+                </div>  
+                <div class="large-6 columns">
+                    <h3>Leaderboard</h3>
+                    <div class="panel tiny">
+                        <div class="row" ng-repeat="leader in leaders | orderBy:'points'">
+                            <h6 class="small-6 columns">{{leader.name}}</h6>
+                            <h6 class="small-6 columns">+{{leader.points || 0}}</h6>
+                        </div>
+                        <div ng-if="!leaders">No users :(</div>
+                    </div>
+                    
+                </div> 
+            </div>
+            
+            <div class="row">
+                <div class="large-12 medium-12 columns">
+                    <h3>Add a new Activity or Reward:</h3>
+                    <form ng-submit="newItem()" name="newItemForm">
+                        <div class="row">
+                            <div class="large-2 columns">
+                                <label>Type</label>
+                                <select ng-model="item.type">
+                                    <option value="activity">Activity</option>
+                                    <option value="reward">Reward</option>
+                                </select>
+                            </div>
+                            <div class="large-6 columns">
+                                <label>Title</label>
+                                <input type="text" ng-model="item.title" placeholder="Didn't go out to eat today, Exercised for 30 minutes, etc" />
+                            </div>
+                            <div class="large-3 columns">
+                                <label>Price/Reward</label>
+                                <input type="text" ng-model="item.price" placeholder="20, 40, 80, 100, etc" />
+                            </div>
+                            <div class="large-1 columns" style="margin-top: 20px;">
+                                <input type="submit" class="tiny button" value="Add" />
+                            </div>
+                            
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+            <script src="bower_components/jquery/jquery.js"></script>
+            <script src="bower_components/foundation/js/foundation.min.js"></script>
+            <script src="js/app.js"></script>
+        </body>
+    </html>
+    
